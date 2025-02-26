@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Советский Асс: победный полет!</title>
+<style>
+body {
+  background-color: #333;
+  color: #fff;
+  font-family: sans-serif;
+  text-align: center;
+  margin: 0;
+  overflow: hidden;
+}
+
+#gameCanvas {
+  background-color: #000;
+  cursor: none;
+  display: none;
+  margin: 0 auto; /* Добавляем это */
+}
+
+#infoPanel {
+  margin-top: 10px;
+}
+
+#gameOverScreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  z-index: 10;
+}
+
+#gameOverScreen h1 {
+  font-size: 3em;
+}
+
+#restartButton {
+  background-color: #4CAF50;
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 1.5em;
+  cursor: pointer;
+}
+
+#gameDescriptionScreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8); /* Полупрозрачный фон */
+  color: #fff;
+  display: none; /* Скрываем экран описания по умолчанию */
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+#gameDescriptionScreen h1 {
+  font-size: 2em;
+  margin-bottom: 20px;
+}
+
+#gameDescriptionScreen p {
+  font-size: 1.2em;
+  margin-bottom: 20px;
+  max-width: 600px;
+  text-align: center;
+}
+
+#gameDescriptionScreen ul {
+  list-style: none;
+  padding: 0;
+}
+
+#gameDescriptionScreen li {
+  font-size: 1.1em;
+  margin-bottom: 10px;
+}
+</style>
+</head>
+<body>
+
+<h1>Советский асс: победный полет</h1>
+
+<div id="gameDescriptionScreen">
+  <h1>Советский Асс: победный полет!</h1>
+  <p>Вы отважный пилот советского штурмовика. Не дайте вражеским захватчикам прорваться! Это ваша битва</p>
+
+  <h2>Управление:</h2>
+  <ul>
+    <li><strong>Стрелки влево/вправо:</strong> Перемещение самолета</li>
+    <li><strong>Пробел:</strong> Стрельба</li>
+    <li><strong>Мышь:</strong> Управление самолетом</li>
+  </ul>
+
+  <button id="startGameButton">Начать игру</button>
+</div>
+
+
+<canvas id="gameCanvas" width="800" height="800"></canvas>
+
+<div id="infoPanel">
+  Жизни: <span id="lives">3</span> | Счет: <span id="score">0</span>
+</div>
+
+<div id="gameOverScreen">
+  <h1>Game Over!</h1>
+  <p id="finalScore">Ваш счет: 0</p>
+  <button id="restartButton">Начать заново</button>
+</div>
+
+<script>
+// Получаем элементы HTML
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreElement = document.getElementById("score");
+const livesElement = document.getElementById("lives");
+const gameOverScreen = document.getElementById("gameOverScreen");
+const restartButton = document.getElementById("restartButton");
+const finalScoreElement = document.getElementById("finalScore");
+const gameDescriptionScreen = document.getElementById("gameDescriptionScreen");
+const startGameButton = document.getElementById("startGameButton");
+
+console.log(canvas, ctx);
+
+// После загрузки DOM показываем экран приветствия
+document.addEventListener("DOMContentLoaded", function() {
+    gameDescriptionScreen.style.display = "flex";
+});
+
+// Настройки игры
+const canvasWidth = canvas.width;
+const canvasHeight = canvas.height;
+
+// Настройки самолета игрока
+const playerWidth = 80;
+const playerHeight = 80;
+let playerX = (canvasWidth - playerWidth) / 2;
+const playerSpeed = 7;
+
+// Настройки снаряда
+const bulletWidth = 5;
+const bulletHeight = 10;
+let bulletX = 0;
+let bulletY = 0;
+let bulletActive = false;
+const bulletSpeed = 10;
+
+// Настройки вражеских самолетов
+const enemyWidth = 50;
+const enemyHeight = 50;
+const enemyRowCount = 5;
+const enemyColumnCount = 10;
+const enemyPadding = 10;
+const enemyOffsetTop = 30;
+const enemyOffsetLeft = 30;
+let enemies = [];
+let enemySpeed = 0.5;  // Скорость движения врагов
+
+// Инициализация вражеских самолетов
+function initializeEnemies() {
+  enemies = [];
+  for (let c = 0; c < enemyColumnCount; c++) {
+    enemies[c] = [];
+    for (let r = 0; r < enemyRowCount; r++) {
+      enemies[c][r] = {
+        x: c * (enemyWidth + enemyPadding) + enemyOffsetLeft,
+        y: r * (enemyHeight + enemyPadding) + enemyOffsetTop,
+        status: 1, // 1 = жив, 0 = уничтожен
+      };
+    }
+  }
+}
+
+// Переменные игры
+let score = 0;
+let lives = 3;
+let rightPressed = false;
+let leftPressed = false;
+
+// Загрузка изображений (обязательно убедитесь, что пути к изображениям верны!)
+const playerImage = new Image();
+const enemyImage = new Image();
+const backgroundImage = new Image();
+
+playerImage.src = "https://i.imgur.com/DEnTNM5.png";
+enemyImage.src = "https://i.imgur.com/rFLhQAb.png";
+backgroundImage.src = "https://i.imgur.com/5xF8uNe.png";
+
+// Функция, возвращающая Promise, который разрешается после загрузки изображения
+function loadImage(image) {
+  return new Promise((resolve, reject) => {
+    image.onload = () => resolve(image);
+    image.onerror = (error) => reject(error); // Добавляем обработку ошибок
+  });
+}
+
+// Инициализация игры после загрузки всех изображений
+Promise.all([
+  loadImage(backgroundImage),
+  loadImage(playerImage),
+  loadImage(enemyImage)
+])
+  .then(() => {
+    console.log("Все изображения загружены!");
+    initializeEnemies(); // Создаем врагов
+
+  })
+  .catch(error => {
+    console.error("Ошибка загрузки изображений:", error);
+  });
+
+
+// Обработчики событий клавиатуры
+document.addEventListener("keydown", keyDownHandler, false);
+document.addEventListener("keyup", keyUpHandler, false);
+document.addEventListener("mousemove", mouseMoveHandler, false);  // Добавляем обработчик движения мыши
+
+function keyDownHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight") {
+    rightPressed = true;
+  } else if (e.key === "Left" || e.key === "ArrowLeft") {
+    leftPressed = true;
+  } else if (e.key === " ") {
+    // Стрельба по пробелу
+    if (!bulletActive) {
+      fireBullet();
+    }
+  }
+}
+
+function keyUpHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight") {
+    rightPressed = false;
+  } else if (e.key === "Left" || e.key === "ArrowLeft") {
+    leftPressed = false;
+  }
+}
+
+// Функция для управления самолетом мышью
+function mouseMoveHandler(e) {
+  const relativeX = e.clientX - canvas.offsetLeft;
+  if (relativeX > 0 && relativeX < canvasWidth) {
+    playerX = relativeX - playerWidth / 2; // Центрируем самолет по мыши
+  }
+}
+
+
+// Функции движения
+function movePlayer() {
+  if (rightPressed && playerX < canvasWidth - playerWidth) {
+    playerX += playerSpeed;
+  } else if (leftPressed && playerX > 0) {
+    playerX -= playerSpeed;
+  }
+}
+
+// Функции снаряда
+function fireBullet() {
+  if (!bulletActive) {
+    bulletX = playerX + playerWidth / 2 - bulletWidth / 2;
+    bulletY = canvasHeight - playerHeight - bulletHeight;
+    bulletActive = true;
+  }
+}
+
+function moveBullet() {
+  if (bulletActive) {
+    bulletY -= bulletSpeed;
+    if (bulletY < 0) {
+      bulletActive = false;
+    }
+  }
+}
+
+// Движение врагов
+function moveEnemies() {
+    for (let c = 0; c < enemyColumnCount; c++) {
+        for (let r = 0; r < enemyRowCount; r++) {
+            if (enemies[c][r].status === 1) {
+                enemies[c][r].x += enemySpeed;
+
+                // Обратный ход, если достигли края
+                if (enemies[c][r].x + enemyWidth > canvasWidth || enemies[c][r].x < 0) {
+                    enemySpeed = -enemySpeed; // Меняем направление
+                    // Сдвигаем вниз
+                    for (let i = 0; i < enemyColumnCount; i++) {
+                        for (let j = 0; j < enemyRowCount; j++) {
+                            enemies[i][j].y += 10; // Величина сдвига вниз
+                        }
+                    }
+                    return; // чтобы избежать многократного изменения направления
+                }
+            }
+        }
+    }
+}
+
+// Проверка столкновений
+function collisionDetection() {
+  if (bulletActive) {
+    for (let c = 0; c < enemyColumnCount; c++) {
+      for (let r = 0; r < enemyRowCount; r++) {
+        const enemy = enemies[c][r];
+        if (enemy.status === 1) {
+          if (
+            bulletX > enemy.x &&
+            bulletX < enemy.x + enemyWidth &&
+            bulletY > enemy.y &&
+            bulletY < enemy.y + enemyHeight
+          ) {
+            enemy.status = 0; // Враг уничтожен
+            bulletActive = false;
+            score++;
+            scoreElement.textContent = score;
+
+            // Проверка на победу
+            if (score === enemyRowCount * enemyColumnCount) {
+              alert("Победа!");
+              document.location.reload();
+            }
+            return; // Прерываем цикл после первого столкновения
+          }
+        }
+      }
+    }
+  }
+}
+
+// Проверка, коснулись ли враги игрока или нижней границы
+function checkEnemiesTouchBottom() {
+  for (let c = 0; c < enemyColumnCount; c++) {
+    for (let r = 0; r < enemyRowCount; r++) {
+      if (enemies[c][r].status === 1) {
+        if (enemies[c][r].y + enemyHeight >= canvasHeight - playerHeight || (
+            playerX < enemies[c][r].x + enemyWidth &&
+            playerX + playerWidth > enemies[c][r].x &&
+            canvasHeight - playerHeight < enemies[c][r].y + enemyHeight &&
+            canvasHeight < enemies[c][r].y + enemyHeight + playerHeight)
+        )
+         {
+          lives--;
+          livesElement.textContent = lives;
+          if (lives <= 0) {
+            gameOver();
+          }
+          return;
+        }
+      }
+    }
+  }
+}
+
+// Функция Game Over
+function gameOver() {
+  finalScoreElement.textContent = "Ваш счет: " + score;
+  gameOverScreen.style.display = "flex";
+  document.removeEventListener("keydown", keyDownHandler); // Отключаем обработчики
+  document.removeEventListener("keyup", keyUpHandler);
+  document.removeEventListener("mousemove", mouseMoveHandler); //Отключаем мышь
+
+}
+
+// Функция перезапуска игры
+function restartGame() {
+  gameOverScreen.style.display = "none";
+  score = 0;
+  lives = 3;
+  scoreElement.textContent = score;
+  livesElement.textContent = lives;
+  playerX = (canvasWidth - playerWidth) / 2; // Reset player position
+  initializeEnemies(); // Reset enemies
+  document.addEventListener("keydown", keyDownHandler, false); // Включаем обработчики
+  document.addEventListener("keyup", keyUpHandler, false);
+  document.addEventListener("mousemove", mouseMoveHandler, false); //Включаем мышь
+  rightPressed = false;
+  leftPressed = false;
+  bulletActive = false;
+  gameLoop(); // Restart the game loop
+
+}
+
+//Рисование
+function drawPlayer() {
+  ctx.drawImage(playerImage, playerX, canvasHeight - playerHeight, playerWidth, playerHeight);
+}
+
+function drawBullet() {
+  ctx.fillStyle = "white";
+  ctx.fillRect(bulletX, bulletY, bulletWidth, bulletHeight);
+}
+
+// Рисование врагов
+function drawEnemies() {
+  for (let c = 0; c < enemyColumnCount; c++) {
+    for (let r = 0; r < enemyRowCount; r++) {
+      if (enemies[c][r].status === 1) {
+        ctx.drawImage(enemyImage, enemies[c][r].x, enemies[c][r].y, enemyWidth, enemyHeight);
+      }
+    }
+  }
+}
+
+// Основная функция рисования
+function draw() {
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight); // Очистка канвы
+
+  // Рисуем фон
+  ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
+
+  drawPlayer(); // Рисуем само
+  drawBullet();  // Рисуем снаряд
+  drawEnemies(); // Рисуем врагов
+
+  collisionDetection(); // Проверяем столкновения
+  checkEnemiesTouchBottom(); //Проверяем коснулись ли враги земли или игрока
+  movePlayer();      // Двигаем самолет
+  moveBullet();      // Двигаем снаряд
+  moveEnemies();     // Двигаем врагов
+}
+
+
+// Основной игровой цикл
+function gameLoop() {
+  draw();
+  requestAnimationFrame(gameLoop);
+  console.log("gameLoop called");
+}
+
+// Функция для начала игры
+function startGame() {
+  gameDescriptionScreen.style.display = "none"; // Скрываем экран описания
+  canvas.style.display = "block"; // Показываем канву
+  gameLoop(); // Запускаем игровой цикл
+}
+
+// Добавляем обработчик события для кнопки "Начать игру"
+startGameButton.addEventListener("click", startGame);
+</script>
+
+</body>
+</html>
